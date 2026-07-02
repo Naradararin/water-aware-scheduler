@@ -16,8 +16,15 @@ its own authors describe it as "the first open-source framework to enable
 exploration of carbon and water [sustainability trade-offs]," evaluated
 against real production traces (Google Borg, Alibaba), and it's more
 sophisticated than this project: it models a **water scarcity factor**
-(weighting a liter of water by how scarce it is in that specific region),
-which this V0 does not. If you want the real research-grade version, go
+that actually influences scheduling decisions (weighting a liter of water
+by how scarce it is in that specific region, region-by-region and
+time-by-time). This project has a much narrower version: a single constant
+Thailand baseline-water-stress score (see `water/scarcity.py`), included
+for reporting context only — it cannot influence which region/time gets
+picked, since a constant applied equally to every candidate is
+mathematically inert under the min-max normalization this project's
+optimizer uses. See "Known limitations" below for why, and what it would
+take to make it real. If you want the real research-grade version, go
 read WaterWise first — this project doesn't replace it.
 
 **What this project actually is:** a small, readable reimplementation built
@@ -161,17 +168,22 @@ wascheduler/
   flagged `confidence="low"` — verify against the Macknick et al. 2012
   primary source before relying on them
 - All water factors are US-literature averages. They may not transfer to
-  other countries' plant fleets — e.g. many Thai power plants use
-  once-through seawater cooling, which barely touches freshwater at all,
-  unlike the freshwater-cooling-tower assumptions baked into most of this
-  table. Don't apply this table to a specific country without checking its
-  actual generation fleet first.
-- This project implements a water *scarcity* weighting for Thailand only
-  (`water/scarcity.py`, WRI Aqueduct 4.0 bws score), but it is
-  **informational only — it does not affect scheduling decisions**. It
-  surfaces in `evaluate.py`'s `water_scarcity_context` output purely to
-  give the raw liter numbers real-world context; a constant national score
-  applied equally to every candidate cannot change which region the
-  optimizer's min-max normalization picks (see `optimizer.py:schedule_job`).
-  WaterWise implements scarcity weighting as an actual decision factor; see
-  the "Why this exists" section above.
+  other countries' plant fleets. E.g., an earlier draft of this README
+  claimed Thai plants mostly use once-through seawater cooling — checked
+  against EGAT's own sustainability disclosures and that was wrong: EGAT's
+  major thermal/combined-cycle plants draw from freshwater sources (rivers,
+  canals, dams — e.g. Bang Pakong plant from the Bang Pakong River, North/
+  South Bangkok plants from the Chao Phraya River). Don't apply this table
+  to a specific country without checking its actual generation fleet and
+  cooling-water sources first — this project got that wrong once already.
+- A water scarcity weighting is implemented (`water/scarcity.py`, Thailand
+  baseline water-stress score from WRI Aqueduct 4.0, CC BY 4.0), but it is
+  informational only and does not affect scheduling decisions. It's a
+  single national constant applied equally to every candidate in a job's
+  comparison set — and multiplying every candidate by the same constant
+  cannot change which one `optimizer.py`'s min-max normalization picks (the
+  math cancels out). Surfaced in `evaluate.py`'s `water_scarcity_context`
+  field for reporting, not fed back into `schedule_job()`. Making it
+  actually influence decisions would require per-region/per-time scarcity
+  data, which runs into basin-vs-administrative-boundary granularity
+  mismatches not yet resolved — left as future work, not attempted here.
