@@ -166,6 +166,12 @@ wascheduler/
   unlike the freshwater-cooling-tower assumptions baked into most of this
   table. Don't apply this table to a specific country without checking its
   actual generation fleet first.
-- This project does not implement a water *scarcity* weighting (a liter in
-  a drought region ≠ a liter in a water-abundant one) — WaterWise does; see
+- This project implements a water *scarcity* weighting for Thailand only
+  (`water/scarcity.py`, WRI Aqueduct 4.0 bws score), but it is
+  **informational only — it does not affect scheduling decisions**. It
+  surfaces in `evaluate.py`'s `water_scarcity_context` output purely to
+  give the raw liter numbers real-world context; a constant national score
+  applied equally to every candidate cannot change which region the
+  optimizer's min-max normalization picks (see `optimizer.py:schedule_job`).
+  WaterWise implements scarcity weighting as an actual decision factor; see
   the "Why this exists" section above.
