@@ -1,0 +1,23 @@
+[
+  {
+    "id": "ml-training-batch-1",
+    "demand_kwh": 500,
+    "earliest_start_offset_hours": 0,
+    "deadline_offset_hours": 12,
+    "candidate_regions": ["FR", "DE", "NO", "TH"]
+  },
+  {
+    "id": "nightly-etl-job",
+    "demand_kwh": 50,
+    "earliest_start_offset_hours": 0,
+    "deadline_offset_hours": 24,
+    "candidate_regions": ["FR", "DE", "NO", "TH"]
+  },
+  {
+    "id": "batch-render-job",
+    "demand_kwh": 200,
+    "earliest_start_offset_hours": 2,
+    "deadline_offset_hours": 8,
+    "candidate_regions": ["FR", "DE", "NO"]
+  }
+]
