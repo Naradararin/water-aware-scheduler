@@ -66,22 +66,30 @@ API key needed to see it work end-to-end.
 
 ### Switching to real data
 
-1. Get a free key: https://www.electricitymaps.com/free-tier-api
-   (free tier is non-commercial use only)
-2. `cp .env.example .env` and fill in your key
-3. In `demo.py`, swap:
-   ```python
-   from wascheduler.sources.mock import MockSignalSource
-   source = MockSignalSource(seed=42)
-   ```
-   for:
-   ```python
-   from wascheduler.sources.electricitymaps import ElectricityMapsSource
-   source = ElectricityMapsSource()
-   ```
-   Note: `get_signals_range()` isn't implemented yet for the real source
-   (free tier historical access varies by plan) — start with `get_signal()`
-   for "latest" readings across a few regions and extend from there.
+**Important — read before signing up:** ElectricityMaps' permanent free tier
+is limited to **a single zone**, and is split into three specific paths:
+a 14-day **Trial** (multi-zone, all signals, but expires), a **Home
+Assistant** license (permanent but tied to a restricted `/home-assistant`
+endpoint that likely doesn't include the power-mix breakdown this project
+needs), and **Academic** access (requires an institutional email). There
+isn't a plain "general-purpose, permanent, multi-zone, free" option — this
+was confirmed by testing the actual signup flow, not assumed.
+
+This project was tested against real data using the **14-day Trial**
+(selected "Asia & Oceania" + "EU + UK" zones, "Carbon Intensity" +
+"Electricity Mix" signals). After the trial expires, real-data mode simply
+stops working and the demo automatically falls back to mock — no code
+changes needed either way.
+
+1. Get a key via whichever path fits you (see caveat above):
+   https://www.electricitymaps.com/free-tier-api
+2. `cp .env.example .env` and fill in `ELECTRICITYMAPS_API_KEY`
+3. Run `python demo.py` — it auto-detects the key and switches to
+   `ElectricityMapsSource` for you (see `get_source()` in `demo.py`).
+   No manual code edits needed.
+   Note: `get_signals_range()` isn't implemented for the real source (see
+   `sources/electricitymaps.py`) — real-data mode uses one "latest" reading
+   per region rather than an hourly window like mock mode does.
 
 ## Who this is for (and who it isn't)
 
@@ -106,7 +114,7 @@ water-only pick different regions** — that's the core finding this project
 demonstrates: carbon-aware scheduling and water-aware scheduling are not the
 same optimization problem.
 
-**Also watch the `⚠` confidence warnings** printed next to results — they
+**Also watch the `[!]` confidence warnings** printed next to results — they
 flag when a decision leans on power-mix sources (e.g. hydro, gas) whose
 water factor is marked low-confidence in `water/factors.py`. In the current
 mock data, the "carbon-only" strategy's headline result depends ~87% on
