@@ -17,7 +17,7 @@ of this as more than a learning/demo artifact.
 
 import json
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from dotenv import load_dotenv
 
@@ -82,7 +82,7 @@ def build_signals(source, is_real: bool, now: datetime) -> list:
 
 
 def main():
-    now = datetime.utcnow().replace(minute=0, second=0, microsecond=0)
+    now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
     source, is_real = get_source()
 
     all_signals = build_signals(source, is_real, now)
