@@ -131,6 +131,10 @@ def main():
             print(f"  {label:12s} -> region={decision.chosen_region:4s} "
                   f"carbon={decision.predicted_carbon_g:8.1f} gCO2 ({comparison['carbon_saved_pct']:+5.1f}%)  "
                   f"water={decision.predicted_water_l:7.2f} L ({comparison['water_saved_pct']:+5.1f}%){flag}")
+            # ASCII-safe: LLM reasoning text can contain characters the
+            # Windows cp1252 console can't encode (em-dashes, curly quotes).
+            reasoning_ascii = decision.reasoning.encode("ascii", "replace").decode("ascii")
+            print(f"               reasoning: {reasoning_ascii}")
 
     print("\n" + "=" * 78)
     print("Look at carbon_only vs water_only above - when they pick DIFFERENT")
