@@ -118,6 +118,65 @@ rate limit, bad key), it silently falls back to the plain f-string —
 this layer is optional and additive; nothing else in the project depends
 on it.
 
+### Optional: LLM advisory second opinion (non-authoritative)
+
+Same NVIDIA NIM key also enables a second, separate LLM call per decision
+(see `wascheduler/llm/advisory.py`, wired into `demo.py`): after
+`schedule_job()` has already picked a region/time, `advisory_reconsideration()`
+asks the LLM to compare that choice against its best cross-region
+runner-up (including drought context) and say whether it's worth a
+second look. It returns `{should_reconsider, reason, checked}` and
+**never reads back into or modifies the actual decision** — same
+one-way-street constraint as the reasoning layer above, just asking a
+different question ("is this worth reconsidering?" instead of "why was
+this picked?"). This is explicitly a first, cautious step toward a
+possible future V2 mode (see Roadmap) where an LLM might eventually be
+allowed to influence scheduling in narrow, guardrailed cases — nothing
+in the repo does that yet.
+
+Sample output (`python demo.py`, real ElectricityMaps + NIM data, France
+and Germany both under real "Alert" drought conditions at the time):
+
+```
+water_only   -> region=DE   carbon=  7900.0 gCO2 (+68.4%)  water=  21.42 L (+56.9%)
+             reasoning: We chose to run the job in region DE...
+             advisory (informational only, does not change the decision): reconsider=True
+             The chosen region DE has a water intensity of 0.43 L/kWh, which is relatively
+             low, but Germany is experiencing Alert drought conditions...
+```
+
+This module doubles the NIM calls `demo.py` makes per run (one for
+reasoning, one for advisory, per decision — 18 total across the 3
+sample jobs × 3 strategies) — see the rate-limit note in "Known
+limitations" below.
+
+**Two targeted, non-general fabrication guards**, both added after live
+testing caught real failures (not hypothetical ones) — see
+`advisory.py`'s own docstrings for the full story of each:
+1. Reuses `reasoning.py`'s job-location guard.
+2. A second guard (`_reason_claims_unsupported_drought_status`) catches
+   the LLM asserting a drought severity (Alert/Warning/etc) for a region
+   whose name never actually appears in the real bulletin text — e.g. an
+   observed case where the model claimed Norway was in "Baltic Sea
+   region" Alert conditions when the real bulletin never mentions Norway
+   at all. This guard checks for the severity word and the region name
+   co-occurring in the *same clause* (sentences split on `.!?`, then
+   comma/semicolon as a fallback) rather than anywhere in the whole
+   response — an earlier whole-text version of this check produced false
+   positives, discarding legitimate responses that correctly described
+   one region's real drought status while merely *naming* a different
+   region elsewhere in the same sentence.
+
+Like the reasoning-layer guard, **these are targeted backstops for the
+specific failure modes observed during testing, not general hallucination
+detectors** — an LLM can invent ungrounded claims in many other phrasings
+neither guard will catch. Any guard hit, parse failure, missing key, or
+network error collapses to `should_reconsider=False` — this module is
+deliberately built to fail toward "no concern" rather than toward
+inventing one, since an advisory layer that's wrong in the "concerning"
+direction is more dangerous, especially as a stepping-stone toward a mode
+where "reconsider" might eventually change real decisions.
+
 ## Who this is for (and who it isn't)
 
 Be precise about this, because it's easy to blur: this scheduler is useful
@@ -223,7 +282,9 @@ wascheduler/
 │   ├── baseline.py           # naive "run now" strategy
 │   └── optimizer.py           # two-signal co-optimizer (min-max normalized)
 ├── llm/
-│   └── reasoning.py          # optional LLM-generated decision explanations (NVIDIA NIM)
+│   ├── reasoning.py          # optional LLM-generated decision explanations (NVIDIA NIM)
+│   ├── drought_context.py    # minimal RAG layer: live EU drought bulletin excerpt
+│   └── advisory.py           # Stage 1 advisory second opinion (non-authoritative)
 └── evaluate.py              # % carbon/water saved vs. baseline
 ```
 
@@ -238,10 +299,15 @@ wascheduler/
   full alpha/beta range — see "Aggregate evaluation" above. Not a benchmark
   against WaterWise's published figures (different data, different
   scheduler — see the module's docstring and "Why this exists" above).
-- **V2** — an LLM/agent layer that actually *reasons over* the carbon/water
-  trade-off and influences which region/time gets picked. What's built today
-  only explains a decision the optimizer already made deterministically —
-  it doesn't reason about the trade-off itself.
+- **V2 (in progress)** — an LLM/agent layer that actually *reasons over* the
+  carbon/water trade-off and influences which region/time gets picked.
+  **Stage 1** of this is built: `wascheduler/llm/advisory.py`'s
+  `advisory_reconsideration()`, wired into `demo.py` (see "Optional: LLM
+  advisory second opinion" above), asks an LLM whether an already-made
+  decision is worth a second look. It's still non-authoritative — it only
+  flags a concern for a human to read, it does not change the decision.
+  The full V2 goal (an LLM/agent actually allowed to influence which
+  region/time gets picked, in narrow guardrailed cases) is not built yet.
 
 ## Known limitations (read before citing this anywhere)
 
@@ -283,11 +349,23 @@ wascheduler/
   deterministic; treat it as a readability layer, not a source of truth.
   Falls back to the plain f-string automatically on any failure (missing
   key, network error, rate limit, etc).
-- `generate_reasoning_llm()` (`wascheduler/llm/reasoning.py`) makes one
-  network call per scheduled job whenever `NVIDIA_NIM_API_KEY` is set —
-  there's no batching or rate-limit handling. NVIDIA NIM's free tier caps
-  around 40 requests/minute, so running many jobs in quick succession (e.g.
-  the planned V1 "aggregate stats across many jobs" work) could hit 429
-  errors. The fallback f-string still works fine in that case (see the
-  `except Exception` block), but it's worth knowing before scripting a
-  large batch run.
+- `generate_reasoning_llm()` (`wascheduler/llm/reasoning.py`) and
+  `advisory_reconsideration()` (`wascheduler/llm/advisory.py`) each make
+  one network call per scheduled job whenever `NVIDIA_NIM_API_KEY` is
+  set — there's no batching or rate-limit handling, and `demo.py` now
+  calls both per decision (2 calls × 3 strategies × 3 jobs = 18 calls per
+  run). NVIDIA NIM's free tier caps around 40 requests/minute, so running
+  many jobs in quick succession (e.g. `aggregate_evaluate.py`, which
+  intentionally skips both LLM layers for exactly this reason via
+  `skip_llm_reasoning=True`) could hit 429 errors if it didn't. The
+  fallback f-string / `checked=False` result still works fine in that
+  case (see each module's `except Exception` block), but it's worth
+  knowing before scripting a large batch run against either layer.
+- The advisory layer's two fabrication guards (see "Optional: LLM
+  advisory second opinion" above) are targeted backstops for the specific
+  failure modes observed during this project's own testing (an invented
+  job location; an invented drought severity for a region not actually in
+  the bulletin) — not general hallucination detectors. An LLM can invent
+  ungrounded claims in other phrasings neither guard catches. Passing
+  both guards means "this specific known failure mode wasn't detected in
+  this response," not "this response is fully grounded."
