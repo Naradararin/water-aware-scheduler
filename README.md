@@ -221,3 +221,11 @@ wascheduler/
   deterministic; treat it as a readability layer, not a source of truth.
   Falls back to the plain f-string automatically on any failure (missing
   key, network error, rate limit, etc).
+- `generate_reasoning_llm()` (`wascheduler/llm/reasoning.py`) makes one
+  network call per scheduled job whenever `NVIDIA_NIM_API_KEY` is set —
+  there's no batching or rate-limit handling. NVIDIA NIM's free tier caps
+  around 40 requests/minute, so running many jobs in quick succession (e.g.
+  the planned V1 "aggregate stats across many jobs" work) could hit 429
+  errors. The fallback f-string still works fine in that case (see the
+  `except Exception` block), but it's worth knowing before scripting a
+  large batch run.
