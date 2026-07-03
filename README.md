@@ -309,6 +309,45 @@ wascheduler/
   The full V2 goal (an LLM/agent actually allowed to influence which
   region/time gets picked, in narrow guardrailed cases) is not built yet.
 
+  **Why Stage 2 isn't open yet — this isn't just "not built," it's
+  actively blocked by evidence from Stage 1 testing.** Stage 1 was
+  deliberately scoped as a low-risk trial specifically to answer the
+  question "is this LLM reliable enough to eventually influence real
+  decisions?" before writing any override logic. The answer so far is
+  no, and it's not a hypothetical concern:
+
+  - Live testing caught the LLM fabricating a drought claim — asserting
+    Norway was under "Alert" drought conditions as part of the "Baltic
+    Sea regions," when the real EDO bulletin never mentions Norway at
+    all (and Norway isn't a Baltic state). This wasn't a rare edge case
+    found by adversarial prompting; it showed up during ordinary sample
+    testing.
+  - The guard written to catch that failure mode needed **two
+    iterations** to get right. The first version, checking for
+    severity-word-plus-region-name anywhere in the whole response, was
+    too broad: it started discarding *correct* responses (e.g. one that
+    accurately described France's real Alert status while merely
+    *naming* the runner-up region elsewhere in the same sentence). It
+    took a second pass — restricting the check to same-clause
+    co-occurrence — to catch the real fabrication without punishing
+    legitimate answers.
+  - Both guards that exist today are still targeted backstops for
+    *observed* failure modes, not general hallucination detectors (see
+    "Known limitations" below). There's no reason to assume these are
+    the only ways this model can fabricate a claim — they're just the
+    ones that happened to surface during this project's own testing.
+
+  If a non-authoritative advisory layer — where a wrong answer costs
+  nothing but a misleading print statement — took two rounds of live
+  failures and fixes to get even this far, that's a direct argument
+  against giving the same LLM authority to change an actual scheduling
+  decision, where a wrong answer has a real (if small-scale, in this
+  project) cost. Stage 2 would need at minimum: a broader-than-two-cases
+  track record of Stage 1's flags being accurate across many real runs,
+  and/or hard bounds on what override is even allowed to do (e.g. only
+  permitted when the chosen-vs-runner-up score gap is small enough that
+  being wrong barely matters). Neither exists yet.
+
 ## Known limitations (read before citing this anywhere)
 
 - Water factors are technology-median estimates, not per-plant measured data
