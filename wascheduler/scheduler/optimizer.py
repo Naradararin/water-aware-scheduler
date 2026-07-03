@@ -11,6 +11,7 @@ number" genuinely depends on which regions/times are on the table for
 a given job.
 """
 
+from ..llm.reasoning import generate_reasoning_llm
 from ..models import Job, ScheduleDecision, SignalReading
 from ..water.derive import derive_water_intensity_l_per_kwh
 
@@ -66,10 +67,21 @@ def schedule_job(
 
     best = min(candidates, key=score)
 
-    reasoning = (
+    fallback_reasoning = (
         f"Chose {best.region} at {best.timestamp} "
         f"(alpha={alpha}, beta={beta}). Candidates ranged "
         f"{c_min:.0f}-{c_max:.0f} gCO2/kWh and {w_min:.2f}-{w_max:.2f} L/kWh."
+    )
+    reasoning = generate_reasoning_llm(
+        job=job,
+        best=best,
+        alpha=alpha,
+        beta=beta,
+        c_min=c_min,
+        c_max=c_max,
+        w_min=w_min,
+        w_max=w_max,
+        fallback_reasoning=fallback_reasoning,
     )
 
     return ScheduleDecision(
