@@ -148,6 +148,65 @@ mock data, the "carbon-only" strategy's headline result depends ~87% on
 low-confidence data — treat that result as "the mechanism works," not "this
 number is accurate."
 
+## Aggregate evaluation across the full alpha/beta range
+
+`python -m wascheduler.aggregate_evaluate` (see `wascheduler/aggregate_evaluate.py`)
+runs 50 synthetic jobs through baseline + optimizer and reports carbon/water
+saved vs. baseline as an **aggregate-totals ratio**:
+`(sum(baseline) - sum(optimized)) / sum(baseline) * 100`. This is the
+headline number because it weights every job by its actual footprint — an
+earlier version of this evaluation averaged each job's own saved-% instead,
+which let a handful of small-baseline jobs swing the mean by hundreds of
+percentage points (one outlier alone was -1584%) without ever appearing in
+the totals. That per-job mean/median/min/max/stdev is still reported by the
+module, but as a secondary, outlier-sensitive diagnostic — not the headline.
+
+Sweeping `alpha` (carbon weight) from 1.0 to 0.0 (`beta = 1 - alpha`), seed=42,
+50 jobs, gives:
+
+| alpha | beta | carbon saved (aggregate %) | water saved (aggregate %) |
+|------:|-----:|----------------------------:|----------------------------:|
+|  1.0  | 0.0  | **+89.59**                  | -36.38                      |
+|  0.8  | 0.2  | +89.59                      | -36.38                      |
+|  0.54 | 0.46 | +80.65                      | -31.47                      |
+|  0.53 | 0.47 | +1.74                       | +10.32                      |
+|  0.52 | 0.48 | -69.96                      | +47.53                      |
+|  0.5  | 0.5  | -73.53                      | **+49.31**                  |
+|  0.2  | 0.8  | -73.65                      | +49.33                      |
+|  0.0  | 1.0  | -73.88                      | +49.34                      |
+
+**The finding: this is a step function, not a gradient.** Carbon and water
+savings stay essentially flat across most of the alpha range and then flip
+almost entirely within a narrow band around **alpha ≈ 0.53**, rather than
+trading off smoothly as alpha decreases. Two things explain why:
+
+1. **The mock region set is small and clusters into two camps.** FR
+   (nuclear-heavy) and NO (hydro-heavy) are both low-carbon/high-water; DE
+   and TH (gas/coal-leaning) are both high-carbon/low-water (see per-region
+   numbers in "Why this exists" above). With only 4 regions forming two
+   tight clusters, there's little middle ground for the optimizer's
+   min-max score to land on — most jobs' argmin flips from "carbon cluster"
+   to "water cluster" over a similar, narrow range of alpha, so the
+   *aggregate* result flips sharply too instead of drifting.
+2. **`alpha=0.5` does not mean "50/50 outcome."** Because the min-max
+   normalization rescales carbon and water to [0, 1] independently per job
+   before combining them, whichever axis has the tighter relative spread
+   in a given job's candidate set exerts more effective pull on the combined
+   score. The flip point landing near alpha≈0.53 rather than exactly 0.5 is
+   a symptom of that asymmetry, not a coincidence.
+
+**Practical takeaway:** for this scheduler on this mock data, there is no
+"mild compromise" region of alpha — you get close to the pure-carbon-only
+outcome (+89.6% carbon / -36.4% water) or close to the pure-water-only
+outcome (-73.9% carbon / +49.3% water), depending on which side of ~0.53
+you land on. Treat any alpha/beta choice near the boundary as unstable
+(compare the alpha=0.53 vs 0.52 rows above — a 0.01 change flips the sign
+of both metrics), and don't read "balanced, alpha=0.5" as a moderate
+setting; on this data it behaves like the water-only extreme. Whether a
+larger/more granular region set (real ElectricityMaps data across many
+zones) would smooth this into a true gradient instead of a step is open —
+this project's mock profile count (4) is too small to tell.
+
 ## Project structure
 
 ```
@@ -173,9 +232,12 @@ wascheduler/
 - **V0 (this)** — mock + real data sources, co-optimizer, baseline comparison,
   optional LLM-generated explanations of each decision (see "Optional:
   LLM-generated explanations" above)
-- **V1** — richer evaluation (aggregate stats across many jobs, benchmark
-  against published figures like WaterWise's ~21% carbon / ~14% water savings
-  to sanity-check the model)
+- **V1 (this)** — aggregate evaluation across many synthetic jobs
+  (`wascheduler/aggregate_evaluate.py`), reported as an aggregate-totals
+  ratio rather than an outlier-sensitive per-job average, swept across the
+  full alpha/beta range — see "Aggregate evaluation" above. Not a benchmark
+  against WaterWise's published figures (different data, different
+  scheduler — see the module's docstring and "Why this exists" above).
 - **V2** — an LLM/agent layer that actually *reasons over* the carbon/water
   trade-off and influences which region/time gets picked. What's built today
   only explains a decision the optimizer already made deterministically —

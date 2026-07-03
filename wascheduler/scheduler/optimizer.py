@@ -34,12 +34,22 @@ def schedule_job(
     alpha: float = 0.5,
     beta: float = 0.5,
     strategy_label: str = "balanced",
+    skip_llm_reasoning: bool = False,
 ) -> ScheduleDecision:
     """
     alpha: weight given to carbon (0-1)
     beta:  weight given to water (0-1)
     (alpha + beta need not be exactly 1.0, but keeping them normalized
     makes the resulting score easier to interpret)
+
+    skip_llm_reasoning: if True, never call generate_reasoning_llm() and
+        use the plain f-string explanation instead, even if
+        NVIDIA_NIM_API_KEY is set. Intended for batch/aggregate runs
+        (many schedule_job() calls in a loop) where making one network
+        call per job would be slow and could hit NIM's free-tier rate
+        limit (~40 req/min) for no real benefit — the LLM explanation is
+        for human-readable single-decision output, not something an
+        aggregate-stats run reads.
     """
     candidates = [
         s
@@ -72,17 +82,20 @@ def schedule_job(
         f"(alpha={alpha}, beta={beta}). Candidates ranged "
         f"{c_min:.0f}-{c_max:.0f} gCO2/kWh and {w_min:.2f}-{w_max:.2f} L/kWh."
     )
-    reasoning = generate_reasoning_llm(
-        job=job,
-        best=best,
-        alpha=alpha,
-        beta=beta,
-        c_min=c_min,
-        c_max=c_max,
-        w_min=w_min,
-        w_max=w_max,
-        fallback_reasoning=fallback_reasoning,
-    )
+    if skip_llm_reasoning:
+        reasoning = fallback_reasoning
+    else:
+        reasoning = generate_reasoning_llm(
+            job=job,
+            best=best,
+            alpha=alpha,
+            beta=beta,
+            c_min=c_min,
+            c_max=c_max,
+            w_min=w_min,
+            w_max=w_max,
+            fallback_reasoning=fallback_reasoning,
+        )
 
     return ScheduleDecision(
         job_id=job.id,
