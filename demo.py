@@ -26,6 +26,7 @@ from wascheduler.scheduler.optimizer import schedule_job
 from wascheduler.scheduler.baseline import schedule_baseline
 from wascheduler.evaluate import compare_to_baseline
 from wascheduler.water.derive import low_confidence_fraction
+from wascheduler.llm.advisory import advisory_reconsideration
 
 load_dotenv()  # reads .env if present
 
@@ -135,6 +136,17 @@ def main():
             # Windows cp1252 console can't encode (em-dashes, curly quotes).
             reasoning_ascii = decision.reasoning.encode("ascii", "replace").decode("ascii")
             print(f"               reasoning: {reasoning_ascii}")
+
+            # Advisory only -- see wascheduler/llm/advisory.py. Runs AFTER
+            # the decision above was already made and never changes it;
+            # this just prints a second opinion for a human to read.
+            advisory = advisory_reconsideration(job, all_signals, chosen_signal, alpha=alpha, beta=beta)
+            if advisory["checked"]:
+                advisory_reason_ascii = advisory["reason"].encode("ascii", "replace").decode("ascii")
+                print(f"               advisory (informational only, does not change the decision): "
+                      f"reconsider={advisory['should_reconsider']}  {advisory_reason_ascii}")
+            else:
+                print(f"               advisory: not checked ({advisory['reason']})")
 
     print("\n" + "=" * 78)
     print("Look at carbon_only vs water_only above - when they pick DIFFERENT")
