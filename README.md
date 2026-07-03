@@ -98,6 +98,26 @@ changes needed either way.
    `sources/electricitymaps.py`) — real-data mode uses one "latest" reading
    per region rather than an hourly window like mock mode does.
 
+### Optional: LLM-generated explanations
+
+By default, `ScheduleDecision.reasoning` is a plain f-string built from the
+same numbers the optimizer already computed. If you set an NVIDIA NIM API
+key, that field is instead filled in by an LLM call that writes a fresh,
+plain-English explanation grounded in those same numbers (see
+`wascheduler/llm/reasoning.py`). This is an explanation layer only — it
+runs *after* `schedule_job()` has already deterministically picked the
+region/time via min-max normalized scoring, and has no way to influence
+that choice.
+
+1. Get a free key: https://build.nvidia.com/settings/api-keys
+2. Add `NVIDIA_NIM_API_KEY` to your `.env` (see `.env.example`)
+3. Run `python demo.py` as usual — no other changes needed.
+
+If the key is missing, or the API call fails for any reason (network,
+rate limit, bad key), it silently falls back to the plain f-string —
+this layer is optional and additive; nothing else in the project depends
+on it.
+
 ## Who this is for (and who it isn't)
 
 Be precise about this, because it's easy to blur: this scheduler is useful
@@ -143,17 +163,23 @@ wascheduler/
 ├── scheduler/
 │   ├── baseline.py           # naive "run now" strategy
 │   └── optimizer.py           # two-signal co-optimizer (min-max normalized)
+├── llm/
+│   └── reasoning.py          # optional LLM-generated decision explanations (NVIDIA NIM)
 └── evaluate.py              # % carbon/water saved vs. baseline
 ```
 
 ## Roadmap
 
-- **V0 (this)** — mock + real data sources, co-optimizer, baseline comparison
+- **V0 (this)** — mock + real data sources, co-optimizer, baseline comparison,
+  optional LLM-generated explanations of each decision (see "Optional:
+  LLM-generated explanations" above)
 - **V1** — richer evaluation (aggregate stats across many jobs, benchmark
   against published figures like WaterWise's ~21% carbon / ~14% water savings
   to sanity-check the model)
-- **V2** — LLM agent layer that reasons over the carbon/water trade-off and
-  explains its scheduling decisions in natural language
+- **V2** — an LLM/agent layer that actually *reasons over* the carbon/water
+  trade-off and influences which region/time gets picked. What's built today
+  only explains a decision the optimizer already made deterministically —
+  it doesn't reason about the trade-off itself.
 
 ## Known limitations (read before citing this anywhere)
 
@@ -187,3 +213,11 @@ wascheduler/
   actually influence decisions would require per-region/per-time scarcity
   data, which runs into basin-vs-administrative-boundary granularity
   mismatches not yet resolved — left as future work, not attempted here.
+- The optional LLM-generated explanation (`wascheduler/llm/reasoning.py`) is
+  an explanation layer only — it cannot influence which region/time gets
+  picked, since it runs after `schedule_job()` has already deterministically
+  decided that via min-max normalized scoring. It's prompted to use only the
+  numbers it's given, but LLM output isn't guaranteed accurate or
+  deterministic; treat it as a readability layer, not a source of truth.
+  Falls back to the plain f-string automatically on any failure (missing
+  key, network error, rate limit, etc).
